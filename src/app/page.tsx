@@ -20,6 +20,7 @@ export default function Home() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [activeTab, setActiveTab] = useState<'record' | 'history'>('record');
   const [isLoading, setIsLoading] = useState(false);
+  const [newRecordingId, setNewRecordingId] = useState<string | undefined>(undefined);
   
   const { isRecording, startRecording, stopRecording, error: recorderError, audioBlob } = useRecorder({
     onAudioChunk: async (blob) => {
@@ -103,6 +104,7 @@ export default function Home() {
   const handleStartRecording = async () => {
     clear(); // Clear previous transcript
     setError(null);
+    setNewRecordingId(undefined);
     await startRecording();
   };
 
@@ -130,6 +132,14 @@ export default function Home() {
         if (!response.ok) {
           throw new Error('Failed to save recording');
         }
+        
+        const data = await response.json();
+        
+        // Set the new recording ID for highlighting
+        setNewRecordingId(data.recordingId);
+        
+        // Switch to history tab to show the new recording
+        setActiveTab('history');
         
         // Refresh recordings list
         fetchRecordings();
@@ -247,7 +257,7 @@ export default function Home() {
                 <p className="text-gray-500">Loading recordings...</p>
               </div>
             ) : (
-              <RecordingsList recordings={recordings} />
+              <RecordingsList recordings={recordings} newRecordingId={newRecordingId} />
             )}
           </>
         )}
