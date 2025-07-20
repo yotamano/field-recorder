@@ -1,103 +1,156 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect } from 'react';
+import RecordButton from '@/components/RecordButton';
+import { useRecorder } from '@/hooks/useRecorder';
+import { useCaptionsStore } from '@/stores/captions';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { transcript, isProcessing, error, pushText, clear, setProcessing, setError } = useCaptionsStore();
+  
+  const { isRecording, startRecording, stopRecording, error: recorderError } = useRecorder({
+    onAudioChunk: async (blob) => {
+      try {
+        setProcessing(true);
+        
+        const formData = new FormData();
+        formData.append('audio', blob);
+        
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.statusText}`);
+        }
+        
+        const reader = response.body?.getReader();
+        if (!reader) return;
+        
+        const decoder = new TextDecoder();
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === 'partial' || data.type === 'final') {
+                  pushText(data.text);
+                }
+                
+                if (data.type === 'error') {
+                  setError(data.message);
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE data:', e);
+              }
+            }
+          }
+        }
+        
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Transcription failed');
+      } finally {
+        setProcessing(false);
+      }
+    },
+  });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleStartRecording = async () => {
+    clear(); // Clear previous transcript
+    setError(null);
+    await startRecording();
+  };
+
+  const handleStopRecording = () => {
+    stopRecording();
+  };
+
+  // Handle recorder errors
+  useEffect(() => {
+    if (recorderError) {
+      setError(recorderError);
+    }
+  }, [recorderError, setError]);
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <h1 className="text-3xl font-bold text-gray-900">Field Recorder</h1>
+          <p className="text-gray-600 mt-2">AI-powered voice recording with real-time transcription</p>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* Status Indicators */}
+        <div className="mb-6 flex gap-4">
+          {isRecording && (
+            <div className="flex items-center gap-2 text-red-600">
+              <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
+              <span className="text-sm font-medium">Recording...</span>
+            </div>
+          )}
+          {isProcessing && (
+            <div className="flex items-center gap-2 text-blue-600">
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
+              <span className="text-sm font-medium">Processing...</span>
+            </div>
+          )}
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Transcript Display */}
+        <div className="bg-white rounded-lg shadow-sm border p-6 min-h-[400px]">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Live Transcript</h2>
+          
+          {transcript ? (
+            <div className="prose prose-sm max-w-none">
+              <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                {transcript}
+              </p>
+            </div>
+          ) : (
+            <div className="text-gray-500 text-center py-12">
+              <p>Start recording to see your transcript here...</p>
+            </div>
+          )}
+        </div>
+
+        {/* Instructions */}
+        <div className="mt-8 bg-blue-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-blue-900 mb-3">How to use:</h3>
+          <ol className="text-blue-800 space-y-2">
+            <li>1. Click the "Start Recording" button at the bottom</li>
+            <li>2. Speak clearly into your microphone</li>
+            <li>3. Watch your transcript appear in real-time</li>
+            <li>4. Click "Stop Recording" when finished</li>
+          </ol>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      {/* Record Button */}
+      <RecordButton
+        isRecording={isRecording}
+        onStartRecording={handleStartRecording}
+        onStopRecording={handleStopRecording}
+      />
     </div>
   );
 }
