@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    const { transcript, audioUrl } = await request.json();
+    const { transcript, audioUrl, labels = [] } = await request.json();
 
     if (!transcript || !audioUrl) {
       return new Response(
@@ -21,6 +21,12 @@ export async function POST(request: NextRequest) {
       data: {
         transcript,
         audioUrl,
+        // Create labels if provided
+        labels: {
+          create: labels.map((label: { name: string }) => ({
+            name: label.name,
+          })),
+        },
       },
     });
 

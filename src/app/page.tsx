@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import RecordButton from '@/components/RecordButton';
 import RecordingsList from '@/components/RecordingsList';
+import LabelChips from '@/components/LabelChips';
 import { useRecorder } from '@/hooks/useRecorder';
 import { useCaptionsStore } from '@/stores/captions';
+import { useLabeler, Label } from '@/hooks/useLabeler';
 
 interface Recording {
   id: string;
@@ -21,6 +23,15 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'record' | 'history'>('record');
   const [isLoading, setIsLoading] = useState(false);
   const [newRecordingId, setNewRecordingId] = useState<string | undefined>(undefined);
+  const [detectedLabels, setDetectedLabels] = useState<Label[]>([]);
+  
+  // Use the labeler hook to detect labels from transcript
+  const { labels } = useLabeler({ text: transcript });
+  
+  // Update detected labels when labels change
+  useEffect(() => {
+    setDetectedLabels(labels);
+  }, [labels]);
   
   const { isRecording, startRecording, stopRecording, error: recorderError, audioBlob } = useRecorder({
     onAudioChunk: async (blob) => {
@@ -105,6 +116,7 @@ export default function Home() {
     clear(); // Clear previous transcript
     setError(null);
     setNewRecordingId(undefined);
+    setDetectedLabels([]);
     await startRecording();
   };
 
@@ -126,6 +138,7 @@ export default function Home() {
           body: JSON.stringify({
             transcript,
             audioUrl,
+            labels: detectedLabels, // Include detected labels
           }),
         });
         
@@ -165,6 +178,13 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold text-gray-900">Field Recorder</h1>
           <p className="text-gray-600 mt-2">AI-powered voice recording with real-time transcription</p>
+          
+          {/* Labels */}
+          {isRecording && detectedLabels.length > 0 && (
+            <div className="mt-2">
+              <LabelChips labels={detectedLabels} />
+            </div>
+          )}
           
           {/* Tabs */}
           <div className="flex mt-6 border-b">
